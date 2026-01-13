@@ -11,7 +11,7 @@ import {
   Alert,
 } from "react-bootstrap";
 import { db } from "@/lib/db";
-import { Product, SortOrder } from "@/types/product";
+import { Product, SortOrder, getCurrencySymbol } from "@/types/product";
 import { blobToDataUrl } from "@/utils/imageUtils";
 import ProductModal from "@/components/ProductModal";
 import ProductTable from "@/components/ProductTable";
@@ -26,6 +26,7 @@ export default function Home() {
   const [dateTo, setDateTo] = useState("");
   const [sortOrder, setSortOrder] = useState<SortOrder>("purchasedAtDesc");
   const [loading, setLoading] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   // 商品を読み込む
   const loadProducts = useCallback(async () => {
@@ -59,6 +60,9 @@ export default function Home() {
 
   // フィルタリング・ソート・検索を適用
   useEffect(() => {
+    // フィルタリングが変更されたら選択状態をクリア
+    setSelectedIds(new Set());
+
     let filtered = [...products];
 
     // 検索（商品番号と商品名の部分一致）
@@ -122,10 +126,66 @@ export default function Home() {
   const handleDelete = async (id: number) => {
     try {
       await db.products.delete(id);
+      // 選択状態からも削除
+      setSelectedIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
       await loadProducts();
     } catch (error) {
       console.error("Error deleting product:", error);
       alert("削除に失敗しました");
+    }
+  };
+
+  // 複数商品を削除
+  const handleDeleteMultiple = async () => {
+    if (selectedIds.size === 0) {
+      alert("削除する商品を選択してください");
+      return;
+    }
+
+    if (!confirm(`${selectedIds.size}件の商品を削除しますか？`)) {
+      return;
+    }
+
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) => db.products.delete(id))
+      );
+      setSelectedIds(new Set());
+      await loadProducts();
+    } catch (error) {
+      console.error("Error deleting products:", error);
+      alert("削除に失敗しました");
+    }
+  };
+
+  // 商品の選択状態を変更
+  const handleSelect = (id: number, selected: boolean) => {
+    setSelectedIds((prev) => {
+      const newSet = new Set(prev);
+      if (selected) {
+        newSet.add(id);
+      } else {
+        newSet.delete(id);
+      }
+      return newSet;
+    });
+  };
+
+  // 全選択/全解除
+  const handleSelectAll = (selected: boolean) => {
+    if (selected) {
+      const allIds = new Set(
+        filteredProducts
+          .map((p) => p.id)
+          .filter((id): id is number => id !== undefined)
+      );
+      setSelectedIds(allIds);
+    } else {
+      setSelectedIds(new Set());
     }
   };
 
@@ -153,6 +213,8 @@ export default function Home() {
             productCode: string;
             name: string;
             price: number;
+            quantity?: number;
+            currency?: string;
             image?: string;
           } = {
             id: product.id,
@@ -160,6 +222,8 @@ export default function Home() {
             productCode: product.productCode,
             name: product.name,
             price: product.price,
+            quantity: product.quantity,
+            currency: product.currency || "JPY",
           };
           if (product.image) {
             data.image = await blobToDataUrl(product.image);
@@ -216,6 +280,8 @@ export default function Home() {
           productCode: string;
           name: string;
           price: number;
+          quantity?: number;
+          currency?: string;
           image: Blob | null;
           id?: number;
         } = {
@@ -223,6 +289,8 @@ export default function Home() {
           productCode: item.productCode,
           name: item.name,
           price: item.price,
+          quantity: item.quantity,
+          currency: item.currency || "JPY",
           image: null,
         };
 
@@ -264,13 +332,26 @@ export default function Home() {
   const handleExportCSV = async () => {
     try {
       const allProducts = await db.products.toArray();
-      const headers = ["仕入れ日", "商品番号", "商品名", "価格"];
-      const rows = allProducts.map((product) => [
-        product.purchasedAt,
-        product.productCode,
-        `"${product.name.replace(/"/g, '""')}"`, // CSVエスケープ
-        `"¥${product.price.toLocaleString()}"`, // 価格をクォートで囲む
-      ]);
+      const headers = [
+        "仕入れ日",
+        "商品番号",
+        "商品名",
+        "個数",
+        "価格",
+        "通貨",
+      ];
+      const rows = allProducts.map((product) => {
+        // 価格を文字列に変換（カンマを含む可能性があるためクォートで囲む）
+        const priceStr = product.price.toLocaleString();
+        return [
+          product.purchasedAt,
+          product.productCode,
+          `"${product.name.replace(/"/g, '""')}"`, // CSVエスケープ
+          product.quantity || "",
+          `"${priceStr}"`, // 価格をクォートで囲む
+          product.currency || "JPY",
+        ];
+      });
 
       const csvContent = [
         headers.join(","),
@@ -413,13 +494,31 @@ export default function Home() {
             </div>
           ) : (
             <>
-              <div className="mb-2 mb-md-3">
+              <div className="mb-2 mb-md-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <strong className="small">
                   表示件数: {filteredProducts.length}件
+                  {selectedIds.size > 0 && (
+                    <span className="text-primary ms-2">
+                      （{selectedIds.size}件選択中）
+                    </span>
+                  )}
                 </strong>
+                {selectedIds.size > 0 && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={handleDeleteMultiple}
+                    className="w-100 w-md-auto"
+                  >
+                    選択した商品を削除 ({selectedIds.size})
+                  </Button>
+                )}
               </div>
               <ProductTable
                 products={filteredProducts}
+                selectedIds={selectedIds}
+                onSelect={handleSelect}
+                onSelectAll={handleSelectAll}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
               />
