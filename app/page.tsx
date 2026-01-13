@@ -1,65 +1,403 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import {
+  Container,
+  Row,
+  Col,
+  Button,
+  Form,
+  Card,
+  Alert,
+} from "react-bootstrap";
+import { db } from "@/lib/db";
+import { Product, SortOrder } from "@/types/product";
+import { blobToDataUrl } from "@/utils/imageUtils";
+import ProductModal from "@/components/ProductModal";
+import ProductTable from "@/components/ProductTable";
 
 export default function Home() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | undefined>();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("purchasedAtDesc");
+  const [loading, setLoading] = useState(true);
+
+  // 商品を読み込む
+  const loadProducts = useCallback(async () => {
+    try {
+      setLoading(true);
+      const allProducts = await db.products.toArray();
+
+      // BlobをData URLに変換
+      const productsWithUrls = await Promise.all(
+        allProducts.map(async (product) => {
+          if (product.image && product.image instanceof Blob) {
+            const imageUrl = await blobToDataUrl(product.image);
+            return { ...product, imageUrl };
+          }
+          return product;
+        })
+      );
+
+      setProducts(productsWithUrls);
+    } catch (error) {
+      console.error("Error loading products:", error);
+      alert("商品の読み込みに失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
+
+  // フィルタリング・ソート・検索を適用
+  useEffect(() => {
+    let filtered = [...products];
+
+    // 検索（商品番号と商品名の部分一致）
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.productCode.toLowerCase().includes(query) ||
+          p.name.toLowerCase().includes(query)
+      );
+    }
+
+    // 日付フィルタ
+    if (dateFrom) {
+      filtered = filtered.filter((p) => p.purchasedAt >= dateFrom);
+    }
+    if (dateTo) {
+      filtered = filtered.filter((p) => p.purchasedAt <= dateTo);
+    }
+
+    // ソート
+    filtered.sort((a, b) => {
+      switch (sortOrder) {
+        case "purchasedAtDesc":
+          return b.purchasedAt.localeCompare(a.purchasedAt);
+        case "priceAsc":
+          return a.price - b.price;
+        case "priceDesc":
+          return b.price - a.price;
+        default:
+          return 0;
+      }
+    });
+
+    setFilteredProducts(filtered);
+  }, [products, searchQuery, dateFrom, dateTo, sortOrder]);
+
+  // 商品を保存
+  const handleSave = async (productData: Omit<Product, "id" | "imageUrl">) => {
+    try {
+      if (editingProduct?.id) {
+        await db.products.update(editingProduct.id, productData);
+      } else {
+        await db.products.add(productData);
+      }
+      await loadProducts();
+      setEditingProduct(undefined);
+    } catch (error) {
+      console.error("Error saving product:", error);
+      throw error;
+    }
+  };
+
+  // 商品を編集
+  const handleEdit = (product: Product) => {
+    setEditingProduct(product);
+    setShowModal(true);
+  };
+
+  // 商品を削除
+  const handleDelete = async (id: number) => {
+    try {
+      await db.products.delete(id);
+      await loadProducts();
+    } catch (error) {
+      console.error("Error deleting product:", error);
+      alert("削除に失敗しました");
+    }
+  };
+
+  // モーダルを閉じる
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingProduct(undefined);
+  };
+
+  // モーダルを開く（新規追加）
+  const handleAddNew = () => {
+    setEditingProduct(undefined);
+    setShowModal(true);
+  };
+
+  // JSONエクスポート
+  const handleExportJSON = async () => {
+    try {
+      const allProducts = await db.products.toArray();
+      const exportData = await Promise.all(
+        allProducts.map(async (product) => {
+          const data: {
+            id?: number;
+            purchasedAt: string;
+            productCode: string;
+            name: string;
+            price: number;
+            image?: string;
+          } = {
+            id: product.id,
+            purchasedAt: product.purchasedAt,
+            productCode: product.productCode,
+            name: product.name,
+            price: product.price,
+          };
+          if (product.image) {
+            data.image = await blobToDataUrl(product.image);
+          }
+          return data;
+        })
+      );
+
+      const json = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `products-backup-${
+        new Date().toISOString().split("T")[0]
+      }.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error exporting JSON:", error);
+      alert("エクスポートに失敗しました");
+    }
+  };
+
+  // JSONインポート
+  const handleImportJSON = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const importData = JSON.parse(text);
+
+      if (!Array.isArray(importData)) {
+        alert("無効なJSON形式です");
+        return;
+      }
+
+      const mode = confirm(
+        "上書きモードでインポートしますか？\n（OK: 上書き / キャンセル: 追加）"
+      );
+
+      if (mode) {
+        // 上書きモード：すべて削除してから追加
+        await db.products.clear();
+      }
+
+      // データを変換して追加
+      for (const item of importData) {
+        const productData: {
+          purchasedAt: string;
+          productCode: string;
+          name: string;
+          price: number;
+          image: Blob | null;
+          id?: number;
+        } = {
+          purchasedAt: item.purchasedAt,
+          productCode: item.productCode,
+          name: item.name,
+          price: item.price,
+          image: null,
+        };
+
+        // 画像データをBlobに変換（Data URL形式）
+        if (item.image && typeof item.image === "string") {
+          if (item.image.startsWith("data:")) {
+            // Data URLからBlobに変換
+            const response = await fetch(item.image);
+            const blob = await response.blob();
+            productData.image = blob;
+          }
+        }
+
+        if (mode) {
+          // 上書きモード：IDを保持
+          if (item.id) {
+            await db.products.add({ ...productData, id: item.id });
+          } else {
+            await db.products.add(productData);
+          }
+        } else {
+          // 追加モード
+          await db.products.add(productData);
+        }
+      }
+
+      await loadProducts();
+      alert("インポートが完了しました");
+    } catch (error) {
+      console.error("Error importing JSON:", error);
+      alert("インポートに失敗しました");
+    } finally {
+      // ファイル入力のリセット
+      event.target.value = "";
+    }
+  };
+
+  // CSVエクスポート
+  const handleExportCSV = async () => {
+    try {
+      const allProducts = await db.products.toArray();
+      const headers = ["仕入れ日", "商品番号", "商品名", "価格"];
+      const rows = allProducts.map((product) => [
+        product.purchasedAt,
+        product.productCode,
+        `"${product.name.replace(/"/g, '""')}"`, // CSVエスケープ
+        `"¥${product.price.toLocaleString()}"`, // 価格をクォートで囲む
+      ]);
+
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) => row.join(",")),
+      ].join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `products-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error exporting CSV:", error);
+      alert("CSVエクスポートに失敗しました");
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <Container fluid className="py-4">
+      <Row>
+        <Col>
+          <h1 className="mb-4">仕入れ商品管理</h1>
+
+          <Alert variant="info" className="small mb-4">
+            ⚠️
+            このアプリはブラウザに保存されます。消える可能性があるのでExport推奨
+          </Alert>
+
+          {/* 操作ボタン */}
+          <div className="mb-4 d-flex flex-wrap gap-2">
+            <Button variant="primary" onClick={handleAddNew}>
+              + 商品を追加
+            </Button>
+            <Button variant="success" onClick={handleExportJSON}>
+              JSONエクスポート
+            </Button>
+            <label className="btn btn-success mb-0">
+              JSONインポート
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportJSON}
+                style={{ display: "none" }}
+              />
+            </label>
+            <Button variant="info" onClick={handleExportCSV}>
+              CSVエクスポート
+            </Button>
+          </div>
+
+          {/* 検索・フィルタ・ソート */}
+          <Card className="mb-4">
+            <Card.Body>
+              <Row className="g-3">
+                <Col md={4}>
+                  <Form.Label>検索（商品番号・商品名）</Form.Label>
+                  <Form.Control
+                    type="text"
+                    placeholder="検索..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </Col>
+                <Col md={3}>
+                  <Form.Label>開始日</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                  />
+                </Col>
+                <Col md={3}>
+                  <Form.Label>終了日</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                  />
+                </Col>
+                <Col md={2}>
+                  <Form.Label>並び替え</Form.Label>
+                  <Form.Select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+                  >
+                    <option value="purchasedAtDesc">
+                      仕入れ日（新しい順）
+                    </option>
+                    <option value="priceAsc">価格（安い順）</option>
+                    <option value="priceDesc">価格（高い順）</option>
+                  </Form.Select>
+                </Col>
+              </Row>
+            </Card.Body>
+          </Card>
+
+          {/* 商品一覧 */}
+          {loading ? (
+            <div className="text-center py-5">
+              <div className="spinner-border" role="status">
+                <span className="visually-hidden">読み込み中...</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="mb-3">
+                <strong>表示件数: {filteredProducts.length}件</strong>
+              </div>
+              <ProductTable
+                products={filteredProducts}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            </>
+          )}
+
+          {/* モーダル */}
+          <ProductModal
+            show={showModal}
+            onHide={handleCloseModal}
+            onSave={handleSave}
+            product={editingProduct}
+          />
+        </Col>
+      </Row>
+    </Container>
   );
 }
