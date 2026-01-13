@@ -157,7 +157,8 @@ export default function ProductModal({ show, onHide, onSave, product }: ProductM
       onHide();
     } catch (error) {
       console.error('Error saving product:', error);
-      alert('保存中にエラーが発生しました');
+      const errorMessage = error instanceof Error ? error.message : '保存中にエラーが発生しました';
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
