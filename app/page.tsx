@@ -266,7 +266,7 @@ export default function Home() {
       const allProducts = await db.products.toArray();
       const headers = ["仕入れ日", "商品番号", "商品名", "価格"];
       const rows = allProducts.map((product) => [
-        `"${product.purchasedAt}"`, // 日付をクォートで囲んで文字列として扱う
+        `"\t${product.purchasedAt}"`, // タブ文字を前に付けて文字列として確実に扱う
         `"${product.productCode}"`, // 商品番号もクォートで囲む
         `"${product.name.replace(/"/g, '""')}"`, // CSVエスケープ
         `"¥${product.price.toLocaleString()}"`, // 価格をクォートで囲む
