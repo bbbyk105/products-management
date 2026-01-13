@@ -17,3 +17,11 @@ body {
   color: #212529;
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* モバイルとデスクトップでフォームサイズを調整 */
+@media (min-width: 768px) {
+  .md-size-normal {
+    font-size: 1rem;
+    padding: 0.375rem 0.75rem;
+  }
+}

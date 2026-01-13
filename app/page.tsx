@@ -291,25 +291,40 @@ export default function Home() {
   };
 
   return (
-    <Container fluid className="py-4">
+    <Container fluid className="py-3 py-md-4 px-3 px-md-4">
       <Row>
         <Col>
-          <h1 className="mb-4">仕入れ商品管理</h1>
+          <h1 className="mb-3 mb-md-4 h3 h-md-2">仕入れ商品管理</h1>
 
-          <Alert variant="info" className="small mb-4">
+          <Alert variant="info" className="small mb-3 mb-md-4">
             ⚠️
             このアプリはブラウザに保存されます。消える可能性があるのでExport推奨
           </Alert>
 
           {/* 操作ボタン */}
-          <div className="mb-4 d-flex flex-wrap gap-2">
-            <Button variant="primary" onClick={handleAddNew}>
+          <div className="mb-3 mb-md-4 d-flex flex-column flex-md-row flex-wrap gap-2">
+            <Button
+              variant="primary"
+              onClick={handleAddNew}
+              className="w-100 w-md-auto"
+              size="sm"
+              style={{ maxWidth: "200px" }}
+            >
               + 商品を追加
             </Button>
-            <Button variant="success" onClick={handleExportJSON}>
+            <Button
+              variant="success"
+              onClick={handleExportJSON}
+              className="w-100 w-md-auto"
+              size="sm"
+              style={{ maxWidth: "200px" }}
+            >
               JSONエクスポート
             </Button>
-            <label className="btn btn-success mb-0">
+            <label
+              className="btn btn-success btn-sm mb-0 w-100 w-md-auto"
+              style={{ maxWidth: "200px" }}
+            >
               JSONインポート
               <input
                 type="file"
@@ -318,45 +333,61 @@ export default function Home() {
                 style={{ display: "none" }}
               />
             </label>
-            <Button variant="info" onClick={handleExportCSV}>
+            <Button
+              variant="info"
+              onClick={handleExportCSV}
+              className="w-100 w-md-auto"
+              size="sm"
+              style={{ maxWidth: "200px" }}
+            >
               CSVエクスポート
             </Button>
           </div>
 
           {/* 検索・フィルタ・ソート */}
-          <Card className="mb-4">
-            <Card.Body>
+          <Card className="mb-3 mb-md-4">
+            <Card.Body className="p-3 p-md-4">
               <Row className="g-3">
-                <Col md={4}>
-                  <Form.Label>検索（商品番号・商品名）</Form.Label>
+                <Col xs={12} md={4}>
+                  <Form.Label className="small fw-bold">
+                    検索（商品番号・商品名）
+                  </Form.Label>
                   <Form.Control
                     type="text"
                     placeholder="検索..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    size="sm"
+                    className="md-size-normal"
                   />
                 </Col>
-                <Col md={3}>
-                  <Form.Label>開始日</Form.Label>
+                <Col xs={6} md={3}>
+                  <Form.Label className="small fw-bold">開始日</Form.Label>
                   <Form.Control
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
+                    size="sm"
+                    className="md-size-normal"
                   />
                 </Col>
-                <Col md={3}>
-                  <Form.Label>終了日</Form.Label>
+                <Col xs={6} md={3}>
+                  <Form.Label className="small fw-bold">終了日</Form.Label>
                   <Form.Control
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
+                    size="sm"
+                    className="md-size-normal"
                   />
                 </Col>
-                <Col md={2}>
-                  <Form.Label>並び替え</Form.Label>
+                <Col xs={12} md={2}>
+                  <Form.Label className="small fw-bold">並び替え</Form.Label>
                   <Form.Select
                     value={sortOrder}
                     onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+                    size="sm"
+                    className="md-size-normal"
                   >
                     <option value="purchasedAtDesc">
                       仕入れ日（新しい順）
@@ -378,8 +409,10 @@ export default function Home() {
             </div>
           ) : (
             <>
-              <div className="mb-3">
-                <strong>表示件数: {filteredProducts.length}件</strong>
+              <div className="mb-2 mb-md-3">
+                <strong className="small">
+                  表示件数: {filteredProducts.length}件
+                </strong>
               </div>
               <ProductTable
                 products={filteredProducts}

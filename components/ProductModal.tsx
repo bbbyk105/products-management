@@ -94,25 +94,27 @@ export default function ProductModal({ show, onHide, onSave, product }: ProductM
   };
 
   return (
-    <Modal show={show} onHide={onHide} centered>
+    <Modal show={show} onHide={onHide} centered size="lg" fullscreen="sm-down">
       <Modal.Header closeButton>
-        <Modal.Title>{product ? '商品を編集' : '商品を追加'}</Modal.Title>
+        <Modal.Title className="h5">{product ? '商品を編集' : '商品を追加'}</Modal.Title>
       </Modal.Header>
       <Form onSubmit={handleSubmit}>
-        <Modal.Body>
+        <Modal.Body className="p-3 p-md-4">
           <Form.Group className="mb-3">
-            <Form.Label>写真</Form.Label>
+            <Form.Label className="fw-bold">写真</Form.Label>
             <Form.Control
               type="file"
               accept="image/*"
               onChange={handleImageChange}
+              size="sm"
+              className="md-size-normal"
             />
             {imagePreview && (
-              <div className="mt-2">
+              <div className="mt-2 text-center">
                 <img
                   src={imagePreview}
                   alt="Preview"
-                  style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'contain' }}
+                  style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }}
                   className="img-thumbnail"
                 />
               </div>
@@ -120,37 +122,43 @@ export default function ProductModal({ show, onHide, onSave, product }: ProductM
           </Form.Group>
 
           <Form.Group className="mb-3">
-            <Form.Label>仕入れ日</Form.Label>
+            <Form.Label className="fw-bold">仕入れ日</Form.Label>
             <Form.Control
               type="date"
               value={formData.purchasedAt}
               onChange={(e) => setFormData({ ...formData, purchasedAt: e.target.value })}
               required
+              size="sm"
+              className="md-size-normal"
             />
           </Form.Group>
 
           <Form.Group className="mb-3">
-            <Form.Label>商品番号</Form.Label>
+            <Form.Label className="fw-bold">商品番号</Form.Label>
             <Form.Control
               type="text"
               value={formData.productCode}
               onChange={(e) => setFormData({ ...formData, productCode: e.target.value })}
               required
+              size="sm"
+              className="md-size-normal"
             />
           </Form.Group>
 
           <Form.Group className="mb-3">
-            <Form.Label>商品名</Form.Label>
+            <Form.Label className="fw-bold">商品名</Form.Label>
             <Form.Control
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
+              size="sm"
+              className="md-size-normal"
             />
           </Form.Group>
 
           <Form.Group className="mb-3">
-            <Form.Label>価格（円）</Form.Label>
+            <Form.Label className="fw-bold">価格（円）</Form.Label>
             <Form.Control
               type="number"
               step="0.01"
@@ -158,14 +166,16 @@ export default function ProductModal({ show, onHide, onSave, product }: ProductM
               value={formData.price}
               onChange={(e) => setFormData({ ...formData, price: e.target.value })}
               required
+              size="sm"
+              className="md-size-normal"
             />
           </Form.Group>
         </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={onHide} disabled={loading}>
+        <Modal.Footer className="p-3 p-md-4">
+          <Button variant="secondary" onClick={onHide} disabled={loading} className="w-100 w-md-auto">
             キャンセル
           </Button>
-          <Button variant="primary" type="submit" disabled={loading}>
+          <Button variant="primary" type="submit" disabled={loading} className="w-100 w-md-auto">
             {loading ? '保存中...' : '保存'}
           </Button>
         </Modal.Footer>
