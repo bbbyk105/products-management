@@ -61,6 +61,16 @@ function isHeicFile(file: File): boolean {
 }
 
 /**
+ * BlobをIndexedDBで保存可能な形式に変換
+ */
+async function normalizeBlobForIndexedDB(blob: Blob): Promise<Blob> {
+  // BlobをArrayBufferに変換してから新しいBlobとして再作成
+  // これにより、IndexedDBで確実に保存可能な形式になる
+  const arrayBuffer = await blob.arrayBuffer();
+  return new Blob([arrayBuffer], { type: blob.type });
+}
+
+/**
  * HEIC形式のファイルをJPEGに変換
  */
 async function convertHeicToJpeg(file: File): Promise<File> {
@@ -77,9 +87,12 @@ async function convertHeicToJpeg(file: File): Promise<File> {
     // heic2anyは配列を返す可能性があるため、最初の要素を取得
     const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
     
+    // IndexedDBで保存可能な形式に正規化
+    const normalizedBlob = await normalizeBlobForIndexedDB(blob);
+    
     // BlobをFileに変換
     const jpegFile = new File(
-      [blob],
+      [normalizedBlob],
       file.name.replace(/\.(heic|heif)$/i, '.jpg'),
       { type: 'image/jpeg' }
     );
@@ -163,7 +176,14 @@ export async function resizeAndCompressImage(file: File): Promise<Blob> {
           canvas.toBlob(
             (blob) => {
               if (blob) {
-                resolve(blob);
+                // IndexedDBで保存可能な形式に正規化
+                normalizeBlobForIndexedDB(blob)
+                  .then((normalizedBlob) => {
+                    resolve(normalizedBlob);
+                  })
+                  .catch((error) => {
+                    reject(new Error(`画像の正規化に失敗しました: ${error instanceof Error ? error.message : 'Unknown error'}`));
+                  });
               } else {
                 reject(new Error('画像の圧縮に失敗しました。別の画像を試してください。'));
               }

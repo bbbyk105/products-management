@@ -100,13 +100,33 @@ export default function Home() {
     setFilteredProducts(filtered);
   }, [products, searchQuery, dateFrom, dateTo, sortOrder]);
 
+  // BlobをIndexedDBで保存可能な形式に正規化
+  const normalizeBlobForIndexedDB = async (blob: Blob | null): Promise<Blob | null> => {
+    if (!blob) return null;
+    try {
+      // BlobをArrayBufferに変換してから新しいBlobとして再作成
+      // これにより、IndexedDBで確実に保存可能な形式になる
+      const arrayBuffer = await blob.arrayBuffer();
+      return new Blob([arrayBuffer], { type: blob.type });
+    } catch (error) {
+      console.error("Error normalizing blob:", error);
+      throw error;
+    }
+  };
+
   // 商品を保存
   const handleSave = async (productData: Omit<Product, "id" | "imageUrl">) => {
     try {
+      // 画像Blobを正規化（IndexedDBで保存可能な形式に変換）
+      const normalizedProductData = {
+        ...productData,
+        image: productData.image ? await normalizeBlobForIndexedDB(productData.image) : null,
+      };
+
       if (editingProduct?.id) {
-        await db.products.update(editingProduct.id, productData);
+        await db.products.update(editingProduct.id, normalizedProductData);
       } else {
-        await db.products.add(productData);
+        await db.products.add(normalizedProductData);
       }
       await loadProducts();
       setEditingProduct(undefined);
