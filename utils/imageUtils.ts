@@ -64,10 +64,39 @@ function isHeicFile(file: File): boolean {
  * BlobをIndexedDBで保存可能な形式に変換
  */
 async function normalizeBlobForIndexedDB(blob: Blob): Promise<Blob> {
-  // BlobをArrayBufferに変換してから新しいBlobとして再作成
-  // これにより、IndexedDBで確実に保存可能な形式になる
-  const arrayBuffer = await blob.arrayBuffer();
-  return new Blob([arrayBuffer], { type: blob.type });
+  try {
+    console.log('[Blob正規化] 開始:', {
+      blobSize: blob.size,
+      blobType: blob.type,
+      blobIsClosed: blob.size === 0,
+    });
+
+    // BlobをArrayBufferに変換してから新しいBlobとして再作成
+    // これにより、IndexedDBで確実に保存可能な形式になる
+    const arrayBuffer = await blob.arrayBuffer();
+    console.log('[Blob正規化] ArrayBuffer取得完了:', {
+      arrayBufferSize: arrayBuffer.byteLength,
+    });
+
+    const normalizedBlob = new Blob([arrayBuffer], { type: blob.type });
+    console.log('[Blob正規化] 完了:', {
+      normalizedSize: normalizedBlob.size,
+      normalizedType: normalizedBlob.type,
+    });
+
+    return normalizedBlob;
+  } catch (error) {
+    console.error('[Blob正規化] エラー:', {
+      error,
+      errorType: typeof error,
+      errorName: error instanceof Error ? error.name : 'N/A',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : 'N/A',
+      blobSize: blob.size,
+      blobType: blob.type,
+    });
+    throw error;
+  }
 }
 
 /**
@@ -75,8 +104,17 @@ async function normalizeBlobForIndexedDB(blob: Blob): Promise<Blob> {
  */
 async function convertHeicToJpeg(file: File): Promise<File> {
   try {
+    console.log('[HEIC変換] 開始:', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+    });
+
     // クライアントサイドでのみ動作するため、動的インポートを使用
-    const heic2any = (await import('heic2any')).default;
+    const heic2anyModule = await import('heic2any');
+    const heic2any = heic2anyModule.default;
+    
+    console.log('[HEIC変換] heic2anyモジュール読み込み完了');
     
     const convertedBlob = await heic2any({
       blob: file,
@@ -84,11 +122,32 @@ async function convertHeicToJpeg(file: File): Promise<File> {
       quality: 0.9,
     });
     
+    console.log('[HEIC変換] 変換完了:', {
+      isArray: Array.isArray(convertedBlob),
+      blobType: Array.isArray(convertedBlob) ? convertedBlob[0]?.type : convertedBlob?.type,
+      blobSize: Array.isArray(convertedBlob) ? convertedBlob[0]?.size : convertedBlob?.size,
+    });
+    
     // heic2anyは配列を返す可能性があるため、最初の要素を取得
     const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
     
+    if (!blob) {
+      throw new Error('HEIC変換後のBlobが取得できませんでした');
+    }
+
+    if (!(blob instanceof Blob)) {
+      const blobType = typeof blob;
+      const constructorName = (blob as any)?.constructor?.name || 'unknown';
+      throw new Error(`HEIC変換後のオブジェクトがBlobではありません: ${blobType}, ${constructorName}`);
+    }
+    
     // IndexedDBで保存可能な形式に正規化
+    console.log('[HEIC変換] Blob正規化開始');
     const normalizedBlob = await normalizeBlobForIndexedDB(blob);
+    console.log('[HEIC変換] Blob正規化完了:', {
+      normalizedSize: normalizedBlob.size,
+      normalizedType: normalizedBlob.type,
+    });
     
     // BlobをFileに変換
     const jpegFile = new File(
@@ -97,9 +156,30 @@ async function convertHeicToJpeg(file: File): Promise<File> {
       { type: 'image/jpeg' }
     );
     
+    console.log('[HEIC変換] 完了:', {
+      jpegFileName: jpegFile.name,
+      jpegFileSize: jpegFile.size,
+      jpegFileType: jpegFile.type,
+    });
+    
     return jpegFile;
   } catch (error) {
-    throw new Error(`HEIC形式の変換に失敗しました: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error('[HEIC変換] エラー詳細:', {
+      error,
+      errorType: typeof error,
+      errorName: error instanceof Error ? error.name : 'N/A',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : 'N/A',
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+    });
+    
+    const errorMessage = error instanceof Error 
+      ? `HEIC形式の変換に失敗しました: ${error.name} - ${error.message}${error.stack ? `\nスタック: ${error.stack}` : ''}`
+      : `HEIC形式の変換に失敗しました: ${String(error)}`;
+    
+    throw new Error(errorMessage);
   }
 }
 

@@ -34,12 +34,23 @@ export default function Home() {
       setLoading(true);
       const allProducts = await db.products.toArray();
 
-      // BlobをData URLに変換
+      // ArrayBufferをBlobに変換してからData URLに変換
       const productsWithUrls = await Promise.all(
         allProducts.map(async (product) => {
-          if (product.image && product.image instanceof Blob) {
-            const imageUrl = await blobToDataUrl(product.image);
-            return { ...product, imageUrl };
+          if (product.image) {
+            let imageBlob: Blob | null = null;
+            
+            if (product.image instanceof Blob) {
+              imageBlob = product.image;
+            } else if (product.image instanceof ArrayBuffer) {
+              // ArrayBufferをBlobに変換
+              imageBlob = new Blob([product.image], { type: 'image/jpeg' });
+            }
+            
+            if (imageBlob) {
+              const imageUrl = await blobToDataUrl(imageBlob);
+              return { ...product, image: imageBlob, imageUrl };
+            }
           }
           return product;
         })
@@ -100,38 +111,104 @@ export default function Home() {
     setFilteredProducts(filtered);
   }, [products, searchQuery, dateFrom, dateTo, sortOrder]);
 
-  // BlobをIndexedDBで保存可能な形式に正規化
-  const normalizeBlobForIndexedDB = async (blob: Blob | null): Promise<Blob | null> => {
-    if (!blob) return null;
+  // BlobをIndexedDBで保存可能な形式に正規化（ArrayBufferに変換）
+  const normalizeBlobForIndexedDB = async (image: Blob | ArrayBuffer | null): Promise<ArrayBuffer | null> => {
+    if (!image) return null;
+    
+    // 既にArrayBufferの場合はそのまま返す
+    if (image instanceof ArrayBuffer) {
+      return image;
+    }
+    
+    // Blobの場合はArrayBufferに変換
+    if (!(image instanceof Blob)) {
+      throw new Error(`予期しない型です: ${typeof image}`);
+    }
+    
     try {
-      // BlobをArrayBufferに変換してから新しいBlobとして再作成
-      // これにより、IndexedDBで確実に保存可能な形式になる
-      const arrayBuffer = await blob.arrayBuffer();
-      return new Blob([arrayBuffer], { type: blob.type });
+      console.log('[保存前正規化] 開始:', {
+        blobSize: image.size,
+        blobType: image.type,
+      });
+
+      // BlobをArrayBufferに変換して保存
+      // IndexedDBではArrayBufferの方が確実に保存できる
+      const arrayBuffer = await image.arrayBuffer();
+      
+      console.log('[保存前正規化] 完了:', {
+        arrayBufferSize: arrayBuffer.byteLength,
+      });
+
+      return arrayBuffer;
     } catch (error) {
-      console.error("Error normalizing blob:", error);
+      console.error("[保存前正規化] エラー詳細:", {
+        error,
+        errorType: typeof error,
+        errorName: error instanceof Error ? error.name : 'N/A',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : 'N/A',
+        blobSize: image.size,
+        blobType: image.type,
+      });
       throw error;
     }
+  };
+
+  // ArrayBufferをBlobに変換（表示用）
+  const arrayBufferToBlob = (arrayBuffer: ArrayBuffer | null, type: string = 'image/jpeg'): Blob | null => {
+    if (!arrayBuffer) return null;
+    return new Blob([arrayBuffer], { type });
   };
 
   // 商品を保存
   const handleSave = async (productData: Omit<Product, "id" | "imageUrl">) => {
     try {
-      // 画像Blobを正規化（IndexedDBで保存可能な形式に変換）
-      const normalizedProductData = {
+      console.log('[商品保存] 開始:', {
+        productName: productData.name,
+        hasImage: !!productData.image,
+        imageSize: productData.image instanceof Blob ? productData.image.size : productData.image instanceof ArrayBuffer ? productData.image.byteLength : undefined,
+        imageType: productData.image instanceof Blob ? productData.image.type : productData.image instanceof ArrayBuffer ? 'ArrayBuffer' : undefined,
+      });
+
+      // 画像BlobをArrayBufferに変換（IndexedDBで保存可能な形式に変換）
+      const imageArrayBuffer = productData.image 
+        ? await normalizeBlobForIndexedDB(productData.image) 
+        : null;
+
+      console.log('[商品保存] 画像変換完了:', {
+        hasArrayBuffer: !!imageArrayBuffer,
+        arrayBufferSize: imageArrayBuffer?.byteLength,
+      });
+
+      // ArrayBufferとして保存（型定義を一時的に拡張）
+      const normalizedProductData: any = {
         ...productData,
-        image: productData.image ? await normalizeBlobForIndexedDB(productData.image) : null,
+        image: imageArrayBuffer, // ArrayBufferとして保存
       };
 
+      console.log('[商品保存] データベースに保存開始');
+      
       if (editingProduct?.id) {
         await db.products.update(editingProduct.id, normalizedProductData);
+        console.log('[商品保存] 更新完了:', editingProduct.id);
       } else {
-        await db.products.add(normalizedProductData);
+        const id = await db.products.add(normalizedProductData);
+        console.log('[商品保存] 追加完了:', id);
       }
+      
       await loadProducts();
       setEditingProduct(undefined);
+      console.log('[商品保存] 完了');
     } catch (error) {
-      console.error("Error saving product:", error);
+      console.error("[商品保存] エラー詳細:", {
+        error,
+        errorType: typeof error,
+        errorName: error instanceof Error ? error.name : 'N/A',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : 'N/A',
+        productName: productData.name,
+        hasImage: !!productData.image,
+      });
       throw error;
     }
   };
@@ -246,7 +323,15 @@ export default function Home() {
             currency: product.currency || "JPY",
           };
           if (product.image) {
-            data.image = await blobToDataUrl(product.image);
+            let imageBlob: Blob | null = null;
+            if (product.image instanceof ArrayBuffer) {
+              imageBlob = new Blob([product.image], { type: 'image/jpeg' });
+            } else if (product.image instanceof Blob) {
+              imageBlob = product.image;
+            }
+            if (imageBlob) {
+              data.image = await blobToDataUrl(imageBlob);
+            }
           }
           return data;
         })

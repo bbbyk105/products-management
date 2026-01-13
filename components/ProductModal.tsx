@@ -135,7 +135,12 @@ export default function ProductModal({ show, onHide, onSave, product }: ProductM
       if (imageFile) {
         imageBlob = await resizeAndCompressImage(imageFile);
       } else if (product?.image) {
-        imageBlob = product.image;
+        // ArrayBufferの場合はBlobに変換
+        if (product.image instanceof ArrayBuffer) {
+          imageBlob = new Blob([product.image], { type: 'image/jpeg' });
+        } else if (product.image instanceof Blob) {
+          imageBlob = product.image;
+        }
       }
 
       // 商品番号を3桁ゼロパディングに正規化

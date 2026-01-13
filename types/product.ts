@@ -6,7 +6,7 @@ export interface Product {
   price: number;
   quantity?: number; // 個数
   currency?: string; // 通貨コード（JPY, USD, EURなど）
-  image: Blob | null;
+  image: Blob | ArrayBuffer | null; // IndexedDB保存用にArrayBufferも許可
   imageUrl?: string; // 表示用のURL（Blobから生成）
 }
 
