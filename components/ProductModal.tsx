@@ -170,12 +170,19 @@ export default function ProductModal({ show, onHide, onSave, product }: ProductM
   };
 
   return (
-    <Modal show={show} onHide={onHide} centered size="lg" fullscreen="sm-down">
-      <Modal.Header closeButton>
+    <Modal 
+      show={show} 
+      onHide={onHide} 
+      centered 
+      size="lg" 
+      fullscreen="sm-down"
+      style={{ zIndex: 1050 }}
+    >
+      <Modal.Header closeButton style={{ backgroundColor: '#ffffff' }}>
         <Modal.Title className="h5">{product ? '商品を編集' : '商品を追加'}</Modal.Title>
       </Modal.Header>
       <Form onSubmit={handleSubmit}>
-        <Modal.Body className="p-3 p-md-4">
+        <Modal.Body className="p-3 p-md-4" style={{ backgroundColor: '#ffffff' }}>
           <Form.Group className="mb-3">
             <Form.Label className="fw-bold">写真</Form.Label>
             <Form.Control
@@ -280,7 +287,7 @@ export default function ProductModal({ show, onHide, onSave, product }: ProductM
             />
           </Form.Group>
         </Modal.Body>
-        <Modal.Footer className="p-3 p-md-4">
+        <Modal.Footer className="p-3 p-md-4" style={{ backgroundColor: '#ffffff' }}>
           <Button variant="secondary" onClick={onHide} disabled={loading} className="w-100 w-md-auto">
             キャンセル
           </Button>
